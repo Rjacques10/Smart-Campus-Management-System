@@ -6,12 +6,22 @@ public class Main {
     public static Scanner scanner = new Scanner(System.in);
     private static Student currentStudent = null;
     private static Staff currentStaff = null;
-    private static List<Student> allStudents = new ArrayList<>();
-    private static List<Staff> allStaff = new ArrayList<>();
+
+    // Même principe que pour les étudiants : le staff est lu/écrit directement
+    // dans la base SQLite, plus de liste en mémoire.
+    private static final StaffRepository staffRepository = new StaffRepository();
+
+    // Les étudiants ne vivent plus dans une simple ArrayList : ils sont lus/écrits
+    // dans la base SQLite via ce repository. C'est la seule "source de vérité".
+    private static final StudentRepository studentRepository = new StudentRepository();
 
     public static void main(String[] args) {
         boolean start = false;
         System.out.println("Welcome to Smart Campus Management System ");
+
+        // Force la connexion + création des tables dès le démarrage,
+        // pour échouer tout de suite si la base est inaccessible.
+        Database.getConnection();
 
         while (!start) {
             System.out.println("\nMain Menu:");
@@ -37,7 +47,8 @@ public class Main {
             }
         }
 
-        // Close scanner before exit
+        // Ferme la base de données puis le scanner avant de quitter
+        Database.close();
         scanner.close();
     }
 
@@ -86,8 +97,9 @@ public class Main {
             System.out.println("1. Register Staff");
             System.out.println("2. Display Staff Details");
             System.out.println("3. Student Management");
-            System.out.println("4. Back to Main Menu");
-            System.out.print("Choose (1-4): ");
+            System.out.println("4. Staff Management");
+            System.out.println("5. Back to Main Menu");
+            System.out.print("Choose (1-5): ");
             String opt = scanner.nextLine();
 
             switch (opt) {
@@ -102,11 +114,163 @@ public class Main {
                     studentManagement();
                     break;
                 case "4":
+                    staffManagement();
+                    break;
+                case "5":
                     detail = true;
                     break;
                 default:
                     System.out.println("Invalid option.");
             }
+        }
+    }
+
+    private static void staffManagement() {
+        boolean manager = false;
+        while (!manager) {
+            System.out.println("\nStaff Management:");
+            System.out.println("1. Search Staff by ID");
+            System.out.println("2. List All Staff");
+            System.out.println("3. Modify Staff");
+            System.out.println("4. Delete Staff");
+            System.out.println("5. Set Current Staff by ID");
+            System.out.println("6. Back to Staff Menu");
+            System.out.print("Choose (1-6): ");
+            String opt = scanner.nextLine();
+
+            switch (opt) {
+                case "1":
+                    searchStaffById();
+                    break;
+                case "2":
+                    listAllStaff();
+                    break;
+                case "3":
+                    modifyStaff();
+                    break;
+                case "4":
+                    deleteStaff();
+                    break;
+                case "5":
+                    setCurrentStaffById();
+                    break;
+                case "6":
+                    manager = true;
+                    break;
+                default:
+                    System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    private static void searchStaffById() {
+        System.out.print("Enter staff ID to search: ");
+        String id = scanner.nextLine();
+
+        Staff found = staffRepository.findById(id);
+        if (found != null) {
+            System.out.println(" Staff found:");
+            found.displayStaffDetails();
+        } else {
+            System.out.println(" Staff with ID '" + id + "' not found.");
+        }
+    }
+
+    private static void listAllStaff() {
+        List<Staff> staffList = staffRepository.findAll();
+        if (staffList.isEmpty()) {
+            System.out.println("No staff registered yet.");
+            return;
+        }
+
+        System.out.println("\n===== ALL STAFF =====");
+        for (int i = 0; i < staffList.size(); i++) {
+            Staff s = staffList.get(i);
+            System.out.println((i + 1) + ". " + s.getName() + " (" + s.getStaffID() + ") - " + s.getRole() + " - " + s.getDepartment());
+        }
+        System.out.println("Total staff: " + staffList.size());
+    }
+
+    private static void modifyStaff() {
+        System.out.print("Enter staff ID to modify: ");
+        String id = scanner.nextLine();
+
+        Staff staff = staffRepository.findById(id);
+        if (staff == null) {
+            System.out.println("Staff not found.");
+            return;
+        }
+
+        System.out.println("Current details:");
+        staff.displayStaffDetails();
+
+        System.out.println("\nEnter new details (press Enter to keep current value):");
+
+        System.out.print("Name [" + staff.getName() + "]: ");
+        String name = scanner.nextLine();
+
+        System.out.print("Role [" + staff.getRole() + "]: ");
+        String role = scanner.nextLine();
+
+        System.out.print("Department [" + staff.getDepartment() + "]: ");
+        String dept = scanner.nextLine();
+
+        System.out.print("Email [" + staff.getEmail() + "]: ");
+        String email = scanner.nextLine();
+
+        System.out.print("Contact [" + staff.getContactNumber() + "]: ");
+        String contact = scanner.nextLine();
+
+        if (!name.isEmpty()) staff.setName(name);
+        if (!role.isEmpty()) staff.setRole(role);
+        if (!dept.isEmpty()) staff.setDepartment(dept);
+        if (!email.isEmpty()) staff.setEmail(email);
+        if (!contact.isEmpty()) staff.setContactNumber(contact);
+
+        // Sans cette ligne, les changements resteraient uniquement en mémoire.
+        staffRepository.update(staff);
+
+        System.out.println(" Staff details updated successfully.");
+        staff.displayStaffDetails();
+    }
+
+    private static void deleteStaff() {
+        System.out.print("Enter staff ID to delete: ");
+        String id = scanner.nextLine();
+
+        Staff staff = staffRepository.findById(id);
+        if (staff == null) {
+            System.out.println("Staff not found.");
+            return;
+        }
+
+        System.out.println("You are about to delete:");
+        staff.displayStaffDetails();
+
+        System.out.print("Are you sure? (yes/no): ");
+        String confirmation = scanner.nextLine();
+
+        if (confirmation.equalsIgnoreCase("yes")) {
+            staffRepository.delete(staff.getStaffID());
+            if (currentStaff != null && currentStaff.getStaffID().equalsIgnoreCase(staff.getStaffID())) {
+                currentStaff = null;
+            }
+            System.out.println(" Staff deleted successfully.");
+        } else {
+            System.out.println("Deletion cancelled.");
+        }
+    }
+
+    private static void setCurrentStaffById() {
+        System.out.print("Enter staff ID to set as current: ");
+        String id = scanner.nextLine();
+
+        Staff staff = staffRepository.findById(id);
+        if (staff != null) {
+            currentStaff = staff;
+            System.out.println(" Current staff set to: " + staff.getName() + " (" + staff.getStaffID() + ")");
+        } else {
+            System.out.println(" Staff not found.");
         }
     }
 
@@ -163,6 +327,7 @@ public class Main {
     }
 
     private static void listAllStudents() {
+        List<Student> allStudents = studentRepository.findAll();
         if (allStudents.isEmpty()) {
             System.out.println("No students registered yet.");
             return;
@@ -210,6 +375,10 @@ public class Main {
                 dept.isEmpty() ? null : dept
         );
 
+        // Sans cette ligne, les changements resteraient uniquement en mémoire
+        // et disparaîtraient à la fermeture du programme.
+        studentRepository.update(student);
+
         System.out.println(" Student details updated successfully.");
         student.displayStudentDetails();
     }
@@ -231,8 +400,8 @@ public class Main {
         String confirmation = scanner.nextLine();
 
         if (confirmation.equalsIgnoreCase("yes")) {
-            allStudents.remove(student);
-            if (currentStudent == student) {
+            studentRepository.delete(student.getStudentID());
+            if (currentStudent != null && currentStudent.getStudentID().equalsIgnoreCase(student.getStudentID())) {
                 currentStudent = null;
             }
             System.out.println(" Student deleted successfully.");
@@ -255,12 +424,7 @@ public class Main {
     }
 
     private static Student findStudentById(String id) {
-        for (Student student : allStudents) {
-            if (student.getStudentID().equalsIgnoreCase(id)) {
-                return student;
-            }
-        }
-        return null;
+        return studentRepository.findById(id);
     }
 
     private static void registerStudent() {
@@ -282,7 +446,7 @@ public class Main {
         }
 
         currentStudent = new Student(name, email, contact, id, dept);
-        allStudents.add(currentStudent);
+        studentRepository.save(currentStudent);
         System.out.println(" Student registered successfully.");
         currentStudent.displayStudentDetails();
     }
@@ -317,8 +481,14 @@ public class Main {
 
         // Use overloaded method (compile-time polymorphism)
         boolean success = currentStudent.registerCourse(cname, ccode, credits);
-        if (success) System.out.println("Course registered.");
-        else System.out.println("Unable to register course (limit reached).");
+        if (success) {
+            // Le cours vient d'être ajouté en mémoire ; on le persiste aussi en base.
+            Course lastCourse = currentStudent.getCourses().get(currentStudent.getCourses().size() - 1);
+            studentRepository.addCourse(currentStudent.getStudentID(), lastCourse);
+            System.out.println("Course registered.");
+        } else {
+            System.out.println("Unable to register course (limit reached).");
+        }
     }
 
     private static void processPaymentForStudent() {
@@ -379,6 +549,8 @@ public class Main {
         boolean success = payment.processPayment();
         if (success) {
             currentStudent.addPayment(amountToPay);
+            // Sans cette ligne, le paiement serait "oublié" au prochain lancement du programme.
+            studentRepository.update(currentStudent);
             System.out.println("Payment of GHS " + amountToPay + " recorded.");
             System.out.println("Payment status: " + currentStudent.getPaymentStatus());
         } else {
@@ -402,6 +574,12 @@ public class Main {
         String name = scanner.nextLine();
         System.out.print("Enter staff ID: ");
         String id = scanner.nextLine();
+
+        if (staffRepository.existsById(id)) {
+            System.out.println("A staff member with this ID already exists.");
+            return;
+        }
+
         System.out.print("Enter role: ");
         String role = scanner.nextLine();
         System.out.print("Enter department: ");
@@ -412,7 +590,7 @@ public class Main {
         String contact = scanner.nextLine();
 
         currentStaff = new Staff(name, email, contact, id, role, dept);
-        allStaff.add(currentStaff);
+        staffRepository.save(currentStaff);
         System.out.println("Staff registered successfully.");
     }
 
